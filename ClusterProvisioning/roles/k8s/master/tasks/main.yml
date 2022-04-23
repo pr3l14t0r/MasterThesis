@@ -1,0 +1,50 @@
+#https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/configure-cgroup-driver/
+#https://kubernetes.io/docs/reference/config-api/kubeadm-config.v1beta3/
+- name: Configuring the kubelet cgroup driver
+  template:
+     src: kubeadm-config.yaml
+     dest: /home/{{ k8s_master_admin_user }}/kubeadm-config.yaml 
+
+#https://docs.projectcalico.org/v3.6/getting-started/kubernetes/
+#kubeadm init --config /home/vagrant/kubeadm-config.yaml
+# --cri-socket /run/containerd/containerd.sock
+#--apiserver-advertise-address=192.168.50.11 --apiserver-cert-extra-sans=192.168.50.11 --node-name=k8s-m-1 --pod-network-cidr=192.168.112.0/20 
+- name: Configure kubectl
+  command: kubeadm init --config /home/{{ k8s_master_admin_user }}/kubeadm-config.yaml
+  # --apiserver-advertise-address="{{ k8s_master_apiserver_advertise_address }}" --apiserver-cert-extra-sans="{{ k8s_master_apiserver_advertise_address }}" --node-name="{{ k8s_master_node_name }}" --pod-network-cidr="{{ k8s_master_pod_network_cidr }}"
+  args: 
+    creates: /etc/kubernetes/manifests/kube-apiserver.yaml
+
+- name: Create .kube dir for {{ k8s_master_admin_user }} user
+  file:
+      path: "/home/{{ k8s_master_admin_user }}/.kube"
+      state: directory
+
+- name: Copy kube config to {{ k8s_master_admin_user }} home .kube dir 
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest:  /home/{{ k8s_master_admin_user }}/.kube/config
+    remote_src: yes
+    owner: "{{ k8s_master_admin_user }}"
+    group: "{{ k8s_master_admin_group }}"
+    mode: 0660
+
+#Rewrite calico replacing defaults
+#https://docs.projectcalico.org/getting-started/kubernetes/self-managed-onprem/onpremises
+- name: Rewrite calico.yaml
+  template:
+     src: calico/3.15/calico.yaml
+     dest: /home/{{ k8s_master_admin_user }}/calico.yaml 
+    
+- name: Install Calico (using Kubernetes API datastore)
+  become: false
+  command: kubectl apply -f /home/{{ k8s_master_admin_user }}/calico.yaml 
+  
+# Step 2.6 from https://kubernetes.io/blog/2019/03/15/kubernetes-setup-using-ansible-and-vagrant/
+- name: Generate join command
+  command: kubeadm token create --print-join-command
+  register: join_command
+
+- name: Copy join command for {{ k8s_cluster_name }} cluster to local file
+  become: false
+  local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./{{ k8s_cluster_name }}-join-command"

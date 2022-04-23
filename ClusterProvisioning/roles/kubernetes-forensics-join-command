@@ -1,0 +1,1 @@
+kubeadm join 192.168.56.11:6443 --token fhisg6.ih8e14tdp082dmp5 --discovery-token-ca-cert-hash sha256:7b1b1b0c40dfbc51dd006e60164a0643957729a5755cad93353110aaf04ffe18 

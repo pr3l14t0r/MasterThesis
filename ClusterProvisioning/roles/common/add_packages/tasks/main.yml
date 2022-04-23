@@ -1,0 +1,53 @@
+---
+# From https://www.cyberciti.biz/faq/ansible-apt-update-all-packages-on-ubuntu-debian-linux/
+- name: Upgrade all apt packages
+  apt: upgrade=dist force_apt_get=yes update_cache=yes
+  when: upgrade_all
+
+- name: Check if a reboot is needed for Debian and Ubuntu boxes
+  register: reboot_required_file
+  stat: path=/var/run/reboot-required get_md5=no
+
+- name: Reboot the Debian or Ubuntu server
+  reboot:
+    msg: "Reboot initiated by Ansible due to kernel updates"
+    connect_timeout: 5
+    reboot_timeout: 300
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime
+  when: reboot_required_file.stat.exists
+
+- name: Add new repositories keys
+  apt_key:
+    url='{{item.key}}'
+  with_items: "{{ linux_add_packages_keys | default([])}}"
+  when: linux_add_packages_keys is defined and not (linux_add_packages_keys is none or linux_add_packages_keys | trim == '')
+  register: aptnewkeys
+
+- name: Add new repositories to sources
+  apt_repository:
+    repo='{{item.repo}}'
+  with_items: "{{ linux_add_packages_repositories | default([])}}"
+  when: linux_add_packages_repositories is defined and not (linux_add_packages_repositories is none or linux_add_packages_repositories | trim == '')
+
+- name: Force update cache if new keys added
+  set_fact:
+        linux_add_packages_cache_valid_time: 0
+  when: aptnewkeys.changed
+
+- name: Remove packages
+  apt:
+    name={{ item.name }}
+    state=absent
+  with_items: "{{ linux_remove_packages_names | default([])}}"
+  when: linux_remove_packages_names is defined and not (linux_remove_packages_names is none or linux_remove_packages_names | trim == '')
+
+- name: Install packages
+  apt:
+    name={{ item.name }}
+    state=present
+    update_cache=yes
+    cache_valid_time={{linux_add_packages_cache_valid_time}}
+  with_items: "{{ linux_add_packages_names | default([])}}"
+  when: linux_add_packages_names is defined and not (linux_add_packages_names is none or linux_add_packages_names | trim == '')
